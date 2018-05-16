@@ -3,7 +3,8 @@ import AWS from 'aws-sdk';
 export default ({awsClient: aws, region, endpoint, tableName: TableName,
   consistentRead: ConsistentRead = true,
   readCapacity: ReadCapacityUnits = 5,
-  writeCapacity: WriteCapacityUnits = 5}) => {
+  writeCapacity: WriteCapacityUnits = 5
+  useTTL: UseTTL = true}) => {
   const awsClient = aws || new AWS.DynamoDB({region, endpoint});
 
   const deleteItem = id => awsClient.deleteItem({TableName, Key: {id: {S: id}}}).promise();
@@ -11,6 +12,13 @@ export default ({awsClient: aws, region, endpoint, tableName: TableName,
   return {
     init: (autoCreate = false) => {
       const describe = awsClient.describeTable({TableName}).promise();
+      const updateTTL = awsClient.updateTimeToLive({
+          TableName: TableName,
+          TimeToLiveSpecification: {
+            AttributeName: 'ttl',
+            Enabled: true
+          }
+      }).promise();
       if (autoCreate) {
         return describe.catch(() =>
           awsClient.createTable({
@@ -19,6 +27,7 @@ export default ({awsClient: aws, region, endpoint, tableName: TableName,
             KeySchema: [{AttributeName: 'id', KeyType: 'HASH'}],
             ProvisionedThroughput: {ReadCapacityUnits, WriteCapacityUnits}
           }).promise()
+          .then(updateTTL)
         );
       }
       return describe;
@@ -36,21 +45,24 @@ export default ({awsClient: aws, region, endpoint, tableName: TableName,
       }),
 
     put: (id, expires, content) =>
+      const ttl = Math.floor(expires / 1000);
       awsClient.putItem({
         TableName,
         Item: {
           id: {S: id},
           expires: {N: expires.toString()},
-          content: {S: JSON.stringify(content)}
+          content: {S: JSON.stringify(content)},
+          ttl: { N: ttl.toString() }
         }
       }).promise(),
 
     setExpires: (id, expires) =>
+      const ttl = Math.floor(expires / 1000);
       awsClient.updateItem({
         TableName,
         Key: {id: {S: id}},
-        UpdateExpression: 'SET expires = :value',
-        ExpressionAttributeValues: {':value': {N: expires.toString()}}
+        UpdateExpression: 'SET expires = :expires, ttl = :ttl',
+        ExpressionAttributeValues: { ':expires': { N: expires.toString() }, ':ttl': { N: ttl.toString() } }
       }).promise(),
 
     delete: deleteItem,
