@@ -3,8 +3,7 @@ import AWS from 'aws-sdk';
 export default ({awsClient: aws, region, endpoint, tableName: TableName,
   consistentRead: ConsistentRead = true,
   readCapacity: ReadCapacityUnits = 5,
-  writeCapacity: WriteCapacityUnits = 5
-  useTTL: UseTTL = true}) => {
+  writeCapacity: WriteCapacityUnits = 5}) => {
   const awsClient = aws || new AWS.DynamoDB({region, endpoint});
 
   const deleteItem = id => awsClient.deleteItem({TableName, Key: {id: {S: id}}}).promise();
@@ -44,9 +43,9 @@ export default ({awsClient: aws, region, endpoint, tableName: TableName,
         return null;
       }),
 
-    put: (id, expires, content) =>
+    put: (id, expires, content) => {
       const ttl = Math.floor(expires / 1000);
-      awsClient.putItem({
+      return awsClient.putItem({
         TableName,
         Item: {
           id: {S: id},
@@ -54,16 +53,16 @@ export default ({awsClient: aws, region, endpoint, tableName: TableName,
           content: {S: JSON.stringify(content)},
           ttl: { N: ttl.toString() }
         }
-      }).promise(),
+      }).promise()},
 
-    setExpires: (id, expires) =>
+    setExpires: (id, expires) => {
       const ttl = Math.floor(expires / 1000);
-      awsClient.updateItem({
+      return awsClient.updateItem({
         TableName,
         Key: {id: {S: id}},
         UpdateExpression: 'SET expires = :expires, ttl = :ttl',
         ExpressionAttributeValues: { ':expires': { N: expires.toString() }, ':ttl': { N: ttl.toString() } }
-      }).promise(),
+      }).promise()},
 
     delete: deleteItem,
 
